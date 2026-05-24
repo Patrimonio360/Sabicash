@@ -17,7 +17,7 @@ const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 // ── Versión actual de la app ──────────────────────────────────
-const APP_VERSION     = '..1';
+const APP_VERSION     = '1.0.3';
 const VERSION_URL = 'https://raw.githubusercontent.com/Patrimonio360/Sabicash/main/version.json';
 
 function compareVersions(v1, v2) {
