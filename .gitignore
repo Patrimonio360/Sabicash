@@ -1,0 +1,9 @@
+node_modules/
+android/
+ios/
+.expo/
+dist/
+*.apk
+*.aab
+.env
+src/config.js

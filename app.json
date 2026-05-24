@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "SabiCash",
+    "slug": "sabicash",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1420"
+    },
+    "android": {
+      "package": "com.patrimonio360.sabicash",
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F1420"
+      },
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "platforms": ["android"]
+  }
+}
