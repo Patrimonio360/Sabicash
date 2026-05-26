@@ -1,14 +1,18 @@
+
 import { GROQ_API_KEY, GROQ_URL, GROQ_MODEL } from '../config';
 import { COURSES, SUBJECTS, SECOND_LANGUAGE_OPTIONS } from '../data/questions';
 
-// Valida que las opciones son texto real y no placeholders genéricos
+// Mezcla un array aleatoriamente
+function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+
+// Valida que las opciones son texto real (no letras sueltas ni placeholders)
 function isValidOpts(opts) {
   if (!Array.isArray(opts) || opts.length !== 4) return false;
-  const genericPatterns = /^(opci[oó]n\s*[abcd]|[abcd]|opci[oó]n\s*\d|\d\s*[\.\)]?\s*$)/i;
+  const generic = /^(opci[oó]n\s*[abcd]|[abcd]\.?|opci[oó]n\s*\d)$/i;
   return opts.every(opt =>
     typeof opt === 'string' &&
     opt.trim().length > 1 &&
-    !genericPatterns.test(opt.trim())
+    !generic.test(opt.trim())
   );
 }
 
@@ -31,23 +35,22 @@ export async function generateQuestion(courseId, subjectKey, usedQuestions = [],
     ? `\nNO repitas estas preguntas ya hechas:\n${usedQuestions.slice(-8).map((q, i) => `${i + 1}. ${q}`).join('\n')}`
     : '';
 
-  // PROMPT TEST: ejemplo con contenido real para que Groq no copie los placeholders
+  // ── NUEVO FORMATO: correct + wrong[] en vez de opts[] + a ──
+  // Así es IMPOSIBLE que el índice sea incorrecto — lo calculamos nosotros
   const promptTest = `Eres un profesor experto del sistema educativo español.
 Genera 1 pregunta tipo test sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.${avoidBlock}
 
-Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra. Ejemplo de formato correcto:
-{"type":"test","q":"¿Cuántos lados tiene un triángulo?","opts":["2 lados","3 lados","4 lados","5 lados"],"a":1,"exp":"Un triángulo tiene exactamente 3 lados, que corresponde a la segunda opción."}
+Responde ÚNICAMENTE con este JSON, sin markdown ni texto extra:
+{"type":"test","q":"texto de la pregunta","correct":"respuesta correcta","wrong":["distractor 1","distractor 2","distractor 3"],"exp":"explicación de por qué es correcta"}
 
-Reglas del campo "a" (índice de la respuesta correcta, empieza en 0):
-- Si la opción correcta es la primera  → "a":0
-- Si la opción correcta es la segunda  → "a":1
-- Si la opción correcta es la tercera  → "a":2
-- Si la opción correcta es la cuarta   → "a":3
+Ejemplo real:
+{"type":"test","q":"¿Cuántos lados tiene un cuadrado?","correct":"4 lados","wrong":["3 lados","5 lados","6 lados"],"exp":"Un cuadrado tiene exactamente 4 lados iguales."}
 
-IMPORTANTE:
-- Las 4 opciones en "opts" deben ser textos completos y diferentes entre sí, nunca letras sueltas.
-- La explicación debe confirmar cuál es la correcta y por qué.
-- Asegúrate de que "a" apunta realmente a la opción correcta dentro de "opts".`;
+REGLAS IMPORTANTES:
+- "correct" debe ser la única respuesta verdadera a la pregunta.
+- "wrong" debe contener exactamente 3 distractores incorrectos pero plausibles.
+- La explicación debe confirmar por qué "correct" es la respuesta verdadera.
+- Todas las opciones deben ser textos completos, nunca letras sueltas como "A" o "B".`;
 
   const promptDev = `Eres un profesor experto del sistema educativo español.
 Genera 1 pregunta de desarrollo sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.
@@ -77,7 +80,6 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
     const raw = data?.choices?.[0]?.message?.content?.trim();
     if (!raw) return null;
 
-    // Limpiar posibles bloques markdown que Groq añade a veces
     const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
 
     let parsed;
@@ -87,22 +89,37 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
       return null;
     }
 
+    // ── Preguntas tipo TEST ──
     if (parsed.type === 'test') {
+      const { q, correct, wrong, exp } = parsed;
+
+      // Validaciones básicas
       if (
-        typeof parsed.q === 'string' && parsed.q.length > 5 &&
-        isValidOpts(parsed.opts) &&
-        typeof parsed.a === 'number' && parsed.a >= 0 && parsed.a <= 3 &&
-        typeof parsed.exp === 'string' && parsed.exp.length > 5
-      ) return parsed;
-      return null; // Rechaza si las opciones son basura
+        typeof q !== 'string' || q.length < 5 ||
+        typeof correct !== 'string' || correct.trim().length < 2 ||
+        !Array.isArray(wrong) || wrong.length !== 3 ||
+        typeof exp !== 'string' || exp.length < 5
+      ) return null;
+
+      // Construir opts mezclando correct + wrong — a se calcula aquí, nunca por Groq
+      const shuffled = shuffle([correct, ...wrong]);
+      const a = shuffled.indexOf(correct);
+
+      // Validar que las opciones son texto real
+      if (!isValidOpts(shuffled)) return null;
+
+      return { type: 'test', q, opts: shuffled, a, exp };
     }
 
+    // ── Preguntas de DESARROLLO ──
     if (parsed.type === 'dev') {
+      const { q, answer, exp } = parsed;
       if (
-        typeof parsed.q === 'string' && parsed.q.length > 5 &&
-        typeof parsed.answer === 'string' && parsed.answer.length > 5 &&
-        typeof parsed.exp === 'string'
-      ) return parsed;
+        typeof q !== 'string' || q.length < 5 ||
+        typeof answer !== 'string' || answer.length < 5 ||
+        typeof exp !== 'string'
+      ) return null;
+      return { type: 'dev', q, answer, exp };
     }
 
     return null;
