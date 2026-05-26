@@ -5,19 +5,20 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Constants from 'expo-constants';
 import { AppProvider, useApp } from './src/context/AppContext';
-import OnboardingScreen   from './src/screens/OnboardingScreen';
-import HomeScreen         from './src/screens/HomeScreen';
-import GamesScreen        from './src/screens/GamesScreen';
-import WalletScreen       from './src/screens/WalletScreen';
-import HistoryScreen      from './src/screens/HistoryScreen';
-import ParentScreen       from './src/screens/ParentScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import GamesScreen from './src/screens/GamesScreen';
+import WalletScreen from './src/screens/WalletScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import ParentScreen from './src/screens/ParentScreen';
 
-const Tab   = createBottomTabNavigator();
+const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// ── Versión actual de la app ──────────────────────────────────
-const APP_VERSION     = '1.0.3';
+// ── Versión leída automáticamente desde app.json — nunca más desincronizada ──
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.4';
 const VERSION_URL = 'https://raw.githubusercontent.com/Patrimonio360/Sabicash/main/version.json';
 
 function compareVersions(v1, v2) {
@@ -25,14 +26,14 @@ function compareVersions(v1, v2) {
   const b = v2.split('.').map(Number);
   for (let i = 0; i < 3; i++) {
     if ((a[i] || 0) < (b[i] || 0)) return -1;
-    if ((a[i] || 0) > (b[i] || 0)) return  1;
+    if ((a[i] || 0) > (b[i] || 0)) return 1;
   }
   return 0;
 }
 
 async function checkForUpdates() {
   try {
-    const res  = await fetch(VERSION_URL + '?t=' + Date.now());
+    const res = await fetch(VERSION_URL + '?t=' + Date.now());
     if (!res.ok) return;
     const data = await res.json();
     if (compareVersions(APP_VERSION, data.version) < 0) {
@@ -64,7 +65,7 @@ function MainTabs() {
           paddingBottom: 8 + insets.bottom,
           paddingTop: 4,
         },
-        tabBarActiveTintColor:   '#60a5fa',
+        tabBarActiveTintColor: '#60a5fa',
         tabBarInactiveTintColor: '#475569',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
         tabBarIcon: ({ focused }) => {
@@ -90,11 +91,11 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Inicio"    component={HomeScreen} />
-      <Tab.Screen name="Juegos"    component={GamesScreen} />
-      <Tab.Screen name="Paga"      component={WalletScreen} />
+      <Tab.Screen name="Inicio" component={HomeScreen} />
+      <Tab.Screen name="Juegos" component={GamesScreen} />
+      <Tab.Screen name="Paga" component={WalletScreen} />
       <Tab.Screen name="Historial" component={HistoryScreen} />
-      <Tab.Screen name="Padres"    component={ParentScreen} />
+      <Tab.Screen name="Padres" component={ParentScreen} />
     </Tab.Navigator>
   );
 }
@@ -117,7 +118,7 @@ function RootNavigator() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!state.setupDone
           ? <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-          : <Stack.Screen name="Main"       component={MainTabs} />
+          : <Stack.Screen name="Main" component={MainTabs} />
         }
       </Stack.Navigator>
     </NavigationContainer>
