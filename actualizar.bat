@@ -16,7 +16,15 @@ set PATH=%PATH%;%ANDROID_HOME%\platform-tools
 set APK_SRC=android\app\build\outputs\apk\release\app-release.apk
 set APK_DST=SabiCash.apk
 set VERSION_FILE=version.json
-set GITHUB_URL=https://github.com/Patrimonio360/Sabicash/releases/download
+set GITHUB_RAW=https://raw.githubusercontent.com/Patrimonio360/Sabicash/main/version.json
+set GITHUB_RELEASES=https://github.com/Patrimonio360/Sabicash/releases/download
+
+:: ── Descargar version.json actualizado desde GitHub ──
+echo  Obteniendo version actual desde GitHub...
+powershell -Command "Invoke-WebRequest -Uri '%GITHUB_RAW%' -OutFile '%VERSION_FILE%'" >nul 2>&1
+if errorlevel 1 (
+    echo  AVISO: No se pudo conectar a GitHub. Usando version.json local.
+)
 
 :: ── Leer version actual ──
 for /f "tokens=2 delims=:, " %%a in ('findstr "version" %VERSION_FILE%') do (
@@ -24,7 +32,8 @@ for /f "tokens=2 delims=:, " %%a in ('findstr "version" %VERSION_FILE%') do (
     goto :found_version
 )
 :found_version
-echo  Version actual: %CURRENT_VERSION%
+set CURRENT_VERSION=%CURRENT_VERSION:"=%
+echo  Version actual en GitHub: %CURRENT_VERSION%
 echo.
 
 :: ── Separar major.minor.patch ──
@@ -71,7 +80,7 @@ set NEW_VERSION=%MAJOR%.%MINOR%.%PATCH%
 set TAG=v%NEW_VERSION%
 
 echo.
-echo  Nueva version: %NEW_VERSION% (%TIPO_LABEL%)
+echo  Nueva version: %CURRENT_VERSION% → %NEW_VERSION% (%TIPO_LABEL%)
 echo.
 
 :: ── Pedir notas de la actualizacion ──
@@ -97,9 +106,27 @@ if /i not "%CONFIRM%"=="S" (
     exit /b 0
 )
 
+:: ── Actualizar APP_VERSION en App.js ANTES de compilar ──
+echo.
+echo  [0/5] Actualizando version en App.js...
+powershell -Command "(Get-Content 'App.js' -Raw) -replace \"const APP_VERSION\s*=\s*'[^']*'\", \"const APP_VERSION     = '%NEW_VERSION%'\" | Set-Content 'App.js' -NoNewline"
+echo  App.js actualizado con v%NEW_VERSION%
+
+:: ── Actualizar version.json ANTES de compilar ──
+echo  [0/5] Actualizando version.json...
+set APK_URL=%GITHUB_RELEASES%/%TAG%/SabiCash.apk
+(
+echo {
+echo   "version": "%NEW_VERSION%",
+echo   "url": "%APK_URL%",
+echo   "notes": "%NOTES%"
+echo }
+) > %VERSION_FILE%
+echo  version.json actualizado
+
 :: ── Compilar APK ──
 echo.
-echo  [1/4] Compilando APK...
+echo  [1/5] Compilando APK...
 cd android
 call .\gradlew.bat assembleRelease
 if errorlevel 1 (
@@ -112,58 +139,36 @@ cd ..
 
 :: ── Copiar APK ──
 echo.
-echo  [2/4] Copiando APK...
+echo  [2/5] Copiando APK...
 copy /Y "%APK_SRC%" "%APK_DST%" >nul
-echo  APK copiado: %APK_DST%
-
-:: ── Actualizar version.json ──
-echo.
-echo  [3/4] Actualizando version.json...
-set APK_URL=%GITHUB_URL%/%TAG%/SabiCash.apk
-(
-echo {
-echo   "version": "%NEW_VERSION%",
-echo   "url": "%APK_URL%",
-echo   "notes": "%NOTES%"
-echo }
-) > %VERSION_FILE%
-echo  version.json actualizado con v%NEW_VERSION%
-
-:: ── Actualizar APP_VERSION en App.js ──
-powershell -Command "(Get-Content 'App.js') -replace 'const APP_VERSION\s*=\s*''[^'']*''', 'const APP_VERSION     = ''%NEW_VERSION%''' | Set-Content 'App.js'"
-echo  App.js actualizado con v%NEW_VERSION%
+echo  APK listo: %APK_DST%
 
 :: ── Git commit y push ──
 echo.
-echo  [4/4] Publicando en GitHub...
+echo  [3/5] Publicando en GitHub...
 git add App.js %VERSION_FILE%
 git commit -m "release: v%NEW_VERSION% - %NOTES%"
 git push origin main
 if errorlevel 1 (
-    echo  ERROR al hacer push. Revisa tu conexion o credenciales de GitHub.
+    echo  ERROR al hacer push.
     pause
     exit /b 1
 )
 
-:: ── Instrucciones para subir el APK a GitHub Releases ──
+:: ── Instrucciones Release ──
 echo.
 echo  ==========================================
-echo   BUILD EXITOSO
+echo   BUILD EXITOSO — v%NEW_VERSION%
 echo  ==========================================
 echo.
-echo   APK listo: %CD%\%APK_DST%
-echo   Version:   %NEW_VERSION%
+echo  ULTIMO PASO — Sube el APK a GitHub Releases:
 echo.
-echo   ULTIMO PASO — Sube el APK a GitHub Releases:
-echo   1. Abre: %GITHUB_URL:\=/%
-echo      (quita el /download del final)
-echo   2. Pulsa "Create a new release"
-echo   3. Tag: %TAG%
-echo   4. Sube el archivo: %APK_DST%
-echo   5. Publica el release
+echo  1. Abre: https://github.com/Patrimonio360/Sabicash/releases/new
+echo  2. Tag:  %TAG%
+echo  3. Sube: %CD%\%APK_DST%
+echo  4. Publica el release
 echo.
-echo   Cuando lo publiques, todos los moviles
-echo   veran el aviso de actualizacion al abrir la app.
+echo  Todos los moviles veran el aviso al abrir la app.
 echo.
 
 pause

@@ -1,11 +1,22 @@
 import { GROQ_API_KEY, GROQ_URL, GROQ_MODEL } from '../config';
 import { COURSES, SUBJECTS, SECOND_LANGUAGE_OPTIONS } from '../data/questions';
 
+function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+
+function isValidOpts(opts) {
+  if (!Array.isArray(opts) || opts.length !== 4) return false;
+  const generic = /^(opci[oó]n\s*[abcd]|[abcd]\.?|opci[oó]n\s*\d)$/i;
+  return opts.every(opt =>
+    typeof opt === 'string' &&
+    opt.trim().length > 1 &&
+    !generic.test(opt.trim())
+  );
+}
+
 export async function generateQuestion(courseId, subjectKey, usedQuestions = [], secondLanguage = 'frances') {
-  const course  = COURSES.find(c => c.id === courseId);
+  const course = COURSES.find(c => c.id === courseId);
   if (!course) return null;
 
-  // Resolver etiqueta del segundo idioma
   let subjectLabel;
   if (subjectKey === 'segundo') {
     const lang = SECOND_LANGUAGE_OPTIONS.find(l => l.key === secondLanguage) || SECOND_LANGUAGE_OPTIONS[0];
@@ -17,7 +28,6 @@ export async function generateQuestion(courseId, subjectKey, usedQuestions = [],
   }
 
   const isDev = Math.random() > 0.5;
-
   const avoidBlock = usedQuestions.length > 0
     ? `\nNO repitas estas preguntas ya hechas:\n${usedQuestions.slice(-8).map((q, i) => `${i + 1}. ${q}`).join('\n')}`
     : '';
@@ -26,15 +36,17 @@ export async function generateQuestion(courseId, subjectKey, usedQuestions = [],
 Genera 1 pregunta tipo test sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.${avoidBlock}
 
 Responde ÚNICAMENTE con este JSON, sin markdown ni texto extra:
-{"type":"test","q":"pregunta","opts":["opción A","opción B","opción C","opción D"],"a":0,"exp":"explicación"}
+{"type":"test","q":"texto de la pregunta","correct":"respuesta correcta","wrong":["distractor 1","distractor 2","distractor 3"],"exp":"explicación de por qué es correcta"}
 
-El campo "a" indica qué opción es correcta:
-- Si la correcta es "opción A" → "a":0
-- Si la correcta es "opción B" → "a":1
-- Si la correcta es "opción C" → "a":2
-- Si la correcta es "opción D" → "a":3
+Ejemplo real:
+{"type":"test","q":"¿Cuántos lados tiene un cuadrado?","correct":"4 lados","wrong":["3 lados","5 lados","6 lados"],"exp":"Un cuadrado tiene exactamente 4 lados iguales."}
 
-La explicación DEBE empezar con la respuesta correcta. Ejemplo: si a=1, exp debe empezar con "opción B es correcta porque..."`;
+REGLAS IMPORTANTES:
+- "correct" debe ser la única respuesta verdadera a la pregunta.
+- "wrong" debe contener exactamente 3 distractores incorrectos pero plausibles.
+- La explicación debe confirmar por qué "correct" es la respuesta verdadera.
+- Todas las opciones deben ser textos completos, nunca letras sueltas como "A" o "B".`;
+
   const promptDev = `Eres un profesor experto del sistema educativo español.
 Genera 1 pregunta de desarrollo sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.
 La pregunta debe requerir que el alumno redacte o explique algo con sus palabras.${avoidBlock}
@@ -52,7 +64,7 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages: [{ role: 'user', content: isDev ? promptDev : promptTest }],
-        temperature: 0.8,
+        temperature: 0.7,
         max_tokens: 500,
       }),
     });
@@ -60,30 +72,46 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
     if (!res.ok) return null;
 
     const data = await res.json();
-    const raw  = data?.choices?.[0]?.message?.content?.trim();
+    const raw = data?.choices?.[0]?.message?.content?.trim();
     if (!raw) return null;
 
-    const clean  = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      return null;
+    }
 
     if (parsed.type === 'test') {
+      const { q, correct, wrong, exp } = parsed;
       if (
-        typeof parsed.q === 'string' &&
-        Array.isArray(parsed.opts) && parsed.opts.length === 4 &&
-        typeof parsed.a === 'number' && parsed.a >= 0 && parsed.a <= 3 &&
-        typeof parsed.exp === 'string'
-      ) return parsed;
+        typeof q !== 'string' || q.length < 5 ||
+        typeof correct !== 'string' || correct.trim().length < 2 ||
+        !Array.isArray(wrong) || wrong.length !== 3 ||
+        typeof exp !== 'string' || exp.length < 5
+      ) return null;
+
+      const shuffled = shuffle([correct, ...wrong]);
+      const a = shuffled.indexOf(correct);
+      if (!isValidOpts(shuffled)) return null;
+
+      return { type: 'test', q, opts: shuffled, a, exp };
     }
 
     if (parsed.type === 'dev') {
+      const { q, answer, exp } = parsed;
       if (
-        typeof parsed.q      === 'string' &&
-        typeof parsed.answer === 'string' &&
-        typeof parsed.exp    === 'string'
-      ) return parsed;
+        typeof q !== 'string' || q.length < 5 ||
+        typeof answer !== 'string' || answer.length < 5 ||
+        typeof exp !== 'string'
+      ) return null;
+      return { type: 'dev', q, answer, exp };
     }
 
     return null;
+
   } catch {
     return null;
   }
