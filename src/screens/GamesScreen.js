@@ -243,10 +243,11 @@ function DevQuestion({ q, onScore }) {
 }
 
 // ── Quiz principal ──────────────────────────────────────────
-function Quiz({ course, subject, secondLanguage, onFinish, isSpecialRound }) {
+function Quiz({ course, subject, secondLanguage, onFinish, isSpecialRound, initialSeen = [], difficulty = 1 }) {
   const sub = getSubjectInfo(subject, secondLanguage);
 
-  const usedQRef          = useRef([]);
+  // Arranca con las preguntas ya vistas en rondas anteriores para no repetirlas
+  const usedQRef          = useRef([...initialSeen]);
   const fallbackRef       = useRef(shuffle(QUESTIONS[course]?.[subject] ?? []));
   const scoreRef          = useRef(0);
   const sessionCountRef   = useRef(0);
@@ -276,7 +277,7 @@ function Quiz({ course, subject, secondLanguage, onFinish, isSpecialRound }) {
         })()
       : subject;
 
-    const q = await generateQuestion(course, effectiveSubject, usedQRef.current, secondLanguage);
+    const q = await generateQuestion(course, effectiveSubject, usedQRef.current, secondLanguage, difficulty);
 
     if (q) {
       usedQRef.current = [...usedQRef.current, q.q];
@@ -284,8 +285,9 @@ function Quiz({ course, subject, secondLanguage, onFinish, isSpecialRound }) {
     } else {
       let available = fallbackRef.current.filter(fq => !usedQRef.current.includes(fq.q));
       if (available.length === 0) {
+        // Banco local agotado (sin conexión): rebaraja y permite repetir,
+        // pero conserva el histórico para no perderlo al persistir.
         fallbackRef.current = shuffle(QUESTIONS[course]?.[subject] ?? []);
-        usedQRef.current    = [];
         available           = fallbackRef.current;
       }
       if (available.length > 0) {
@@ -318,7 +320,7 @@ function Quiz({ course, subject, secondLanguage, onFinish, isSpecialRound }) {
   function restart() {
     const passed = scoreRef.current / QUESTIONS_PER_SESSION >= MIN_PASS_RATIO;
     if (passed) accumulatedPtsRef.current += scoreRef.current * POINTS_PER_QUESTION;
-    usedQRef.current        = [];
+    // NO vaciamos usedQRef: así al repetir salen preguntas nuevas, no las mismas
     scoreRef.current        = 0;
     sessionCountRef.current = 0;
     setScore(0);
@@ -389,7 +391,7 @@ function Quiz({ course, subject, secondLanguage, onFinish, isSpecialRound }) {
         )}
 
         <TouchableOpacity style={[styles.resultBtn, isSpecialRound && passed ? { backgroundColor: '#7c3aed' } : {}]}
-          onPress={() => onFinish(totalPts, isSpecialRound, passed)}>
+          onPress={() => onFinish(totalPts, isSpecialRound, passed, usedQRef.current)}>
           <Text style={styles.resultBtnTxt}>← {passed ? 'Cobrar y volver' : 'Volver'}</Text>
         </TouchableOpacity>
         {!passed && (
@@ -477,7 +479,7 @@ export default function GamesScreen({ navigation }) {
     }
   }
 
-  function handleFinish(pts, isSpecial = false, passed = false) {
+  function handleFinish(pts, isSpecial = false, passed = false, seen = []) {
     const today    = todayStr();
     const sub      = getSubjectInfo(subject, state.secondLanguage);
 
@@ -486,15 +488,25 @@ export default function GamesScreen({ navigation }) {
     const newPlays  = prevPlays.includes(subject) ? prevPlays : [...prevPlays, subject];
     const newDailyPlays = { date: today, played: newPlays };
 
+    // Persistir preguntas vistas (sin duplicados, máx. 80) y subir dificultad si aprueba
+    const roundKey    = `${state.course}:${subject}`;
+    const uniqueSeen  = [...new Set([...(state.seenQuestions?.[roundKey] || []), ...seen])].slice(-80);
+    const newSeen     = { ...(state.seenQuestions || {}), [roundKey]: uniqueSeen };
+    const prevRounds  = state.subjectRounds || {};
+    const newRounds   = passed
+      ? { ...prevRounds, [roundKey]: (prevRounds[roundKey] || 0) + 1 }
+      : prevRounds;
+    const persist     = { seenQuestions: newSeen, subjectRounds: newRounds };
+
     // Ronda especial — bonus o penalización directa
     if (isSpecial) {
       if (passed) {
         const newBalance = state.balance + SPECIAL_BONUS;
-        update({ balance: newBalance, dailyPlays: newDailyPlays });
+        update({ balance: newBalance, dailyPlays: newDailyPlays, ...persist });
         Alert.alert('🎯 ¡Ronda Especial superada!', `+${SPECIAL_BONUS.toFixed(2).replace('.', ',')} € añadidos a tu saldo. ¡Increíble!`);
       } else {
         const newBalance = Math.max(0, state.balance - SPECIAL_PENALTY);
-        update({ balance: newBalance, dailyPlays: newDailyPlays });
+        update({ balance: newBalance, dailyPlays: newDailyPlays, ...persist });
         Alert.alert('⛔ Ronda Especial fallada', `−${SPECIAL_PENALTY.toFixed(2).replace('.', ',')} € deducidos de tu saldo. ¡La próxima vez lo consigues!`);
       }
       setSubject(null);
@@ -502,7 +514,7 @@ export default function GamesScreen({ navigation }) {
     }
 
     if (pts === 0) {
-      update({ dailyPlays: newDailyPlays });
+      update({ dailyPlays: newDailyPlays, ...persist });
       setSubject(null);
       return;
     }
@@ -537,6 +549,7 @@ export default function GamesScreen({ navigation }) {
       lastPlayDate: today, streak: newStreak,
       dailyPlays: newDailyPlays,
       subjectStats: newSubjectStats,
+      ...persist,
     });
 
     if (earned > 0) Alert.alert('🎉 ¡Dinero ganado!', `Has convertido ${pts} puntos en ${earned.toFixed(2).replace('.', ',')} €. ¡Bien hecho!`);
@@ -564,6 +577,8 @@ export default function GamesScreen({ navigation }) {
             secondLanguage={state.secondLanguage || 'frances'}
             onFinish={handleFinish}
             isSpecialRound={subject === 'especial'}
+            initialSeen={state.seenQuestions?.[`${state.course}:${subject}`] || []}
+            difficulty={(state.subjectRounds?.[`${state.course}:${subject}`] || 0) + 1}
           />
         : <SubjectSelector
             courseId={state.course}

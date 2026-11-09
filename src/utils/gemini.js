@@ -13,7 +13,15 @@ function isValidOpts(opts) {
   );
 }
 
-export async function generateQuestion(courseId, subjectKey, usedQuestions = [], secondLanguage = 'frances') {
+// difficulty: 1 = nivel base del curso; sube con cada ronda superada de la asignatura.
+function difficultyBlock(difficulty, courseLabel) {
+  const lvl = Math.max(1, Math.round(difficulty));
+  if (lvl <= 1) return '';
+  return `\nNIVEL DE DIFICULTAD: ${lvl} (1 = más fácil, el alumno ya ha superado ${lvl - 1} ronda(s) de esta asignatura).
+A mayor nivel, aumenta la exigencia: enunciados con más pasos de razonamiento, vocabulario más técnico, datos menos evidentes y distractores más sutiles y creíbles. NO te salgas del currículo de ${courseLabel}; sube la dificultad dentro de ese nivel, sin pasar a contenidos de cursos superiores.`;
+}
+
+export async function generateQuestion(courseId, subjectKey, usedQuestions = [], secondLanguage = 'frances', difficulty = 1) {
   const course = COURSES.find(c => c.id === courseId);
   if (!course) return null;
 
@@ -29,11 +37,12 @@ export async function generateQuestion(courseId, subjectKey, usedQuestions = [],
 
   const isDev = Math.random() > 0.5;
   const avoidBlock = usedQuestions.length > 0
-    ? `\nNO repitas estas preguntas ya hechas:\n${usedQuestions.slice(-8).map((q, i) => `${i + 1}. ${q}`).join('\n')}`
+    ? `\nNO repitas NINGUNA de estas preguntas ya hechas (ni variantes equivalentes):\n${usedQuestions.slice(-20).map((q, i) => `${i + 1}. ${q}`).join('\n')}`
     : '';
+  const diffBlock = difficultyBlock(difficulty, course.label);
 
   const promptTest = `Eres un profesor experto del sistema educativo español.
-Genera 1 pregunta tipo test sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.${avoidBlock}
+Genera 1 pregunta tipo test sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.${diffBlock}${avoidBlock}
 
 Responde ÚNICAMENTE con este JSON, sin markdown ni texto extra:
 {"type":"test","q":"texto de la pregunta","correct":"respuesta correcta","wrong":["distractor 1","distractor 2","distractor 3"],"exp":"explicación de por qué es correcta"}
@@ -49,7 +58,7 @@ REGLAS IMPORTANTES:
 
   const promptDev = `Eres un profesor experto del sistema educativo español.
 Genera 1 pregunta de desarrollo sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.
-La pregunta debe requerir que el alumno redacte o explique algo con sus palabras.${avoidBlock}
+La pregunta debe requerir que el alumno redacte o explique algo con sus palabras.${diffBlock}${avoidBlock}
 
 Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
 {"type":"dev","q":"pregunta de desarrollo","answer":"respuesta modelo completa","exp":"explicación ampliada"}`;

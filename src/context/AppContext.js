@@ -18,6 +18,10 @@ const defaultState = {
   lastPlayDate: null, streak: 0,
   // Estadisticas por asignatura
   subjectStats: {},
+  // Preguntas ya vistas por "curso:asignatura" — evita repetir al reentrar
+  seenQuestions: {},
+  // Rondas superadas por "curso:asignatura" — sube la dificultad
+  subjectRounds: {},
   // Juego diario — una ronda por asignatura al dia
   dailyPlays: { date: null, played: [] },
   // Historial
