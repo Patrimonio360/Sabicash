@@ -29,8 +29,8 @@ echo  Describe brevemente que cambia en esta version:
 set /p NOTES=" Descripcion: "
 echo.
 
-:: ── [1/5] Auto-incrementar version ──
-echo  [1/5] Actualizando version...
+:: ── [1/6] Auto-incrementar version ──
+echo  [1/6] Actualizando version...
 
 echo $j = Get-Content 'app.json' -Raw ^| ConvertFrom-Json > _update.ps1
 echo $parts = $j.expo.version -split '\.' >> _update.ps1
@@ -49,13 +49,13 @@ powershell -ExecutionPolicy Bypass -File _update.ps1
 del _update.ps1
 echo.
 
-:: ── [2/5] Generar android/ si no existe ──
+:: ── [2/6] Generar android/ si no existe ──
 if not exist "android" (
-    echo  [2/5] Generando proyecto Android con expo prebuild...
+    echo  [2/6] Generando proyecto Android con expo prebuild...
     call npx expo prebuild --platform android --clean
     if errorlevel 1 ( echo  ERROR en prebuild. & pause & exit /b 1 )
 ) else (
-    echo  [2/5] Carpeta android/ ok.
+    echo  [2/6] Carpeta android/ ok.
 )
 
 :: ── local.properties ──
@@ -64,9 +64,9 @@ echo sdk.dir=%ANDROID_HOME:\=\\%> android\local.properties
 :: ── Desactivar minificacion ──
 powershell -ExecutionPolicy Bypass -Command "(Get-Content 'android\app\build.gradle' -Raw) -replace 'minifyEnabled \(enableProguardInReleaseBuilds\)', 'minifyEnabled false' -replace 'minifyEnabled true', 'minifyEnabled false' | Set-Content 'android\app\build.gradle'"
 
-:: ── [3/5] Compilar APK ──
+:: ── [3/6] Compilar APK ──
 echo.
-echo  [3/5] Compilando APK (puede tardar 5-10 min)...
+echo  [3/6] Compilando APK (puede tardar 5-10 min)...
 cd android
 call .\gradlew.bat clean assembleRelease
 if errorlevel 1 (
@@ -75,9 +75,9 @@ if errorlevel 1 (
 )
 cd ..
 
-:: ── [4/5] Copiar APK ──
+:: ── [4/6] Copiar APK ──
 echo.
-echo  [4/5] Copiando APK...
+echo  [4/6] Copiando APK...
 if not exist "android\app\build\outputs\apk\release\app-release.apk" (
     echo  ERROR: No se genero el APK.
     pause & exit /b 1
@@ -85,9 +85,10 @@ if not exist "android\app\build\outputs\apk\release\app-release.apk" (
 copy /Y "android\app\build\outputs\apk\release\app-release.apk" "SabiCash.apk" >nul
 echo  SabiCash.apk listo.
 
-:: ── [5/5] Git push ──
+:: ── [5/6] Git pull + push ──
 echo.
-echo  [5/5] Publicando en GitHub...
+echo  [5/6] Sincronizando y publicando en GitHub...
+git.exe pull origin main --rebase
 git add .
 for /f "tokens=*" %%v in ('powershell -Command "(Get-Content 'app.json' -Raw | ConvertFrom-Json).expo.version"') do set VER=%%v
 git commit -m "release: v%VER% - %NOTES%"
@@ -96,6 +97,7 @@ if errorlevel 1 (
     echo  AVISO: Push fallido. Ejecuta manualmente: git.exe push origin main
 )
 
+:: ── [6/6] Menu final ──
 echo.
 echo  ==========================================
 echo   LISTO - v%VER% compilada y publicada
@@ -103,9 +105,27 @@ echo  ==========================================
 echo.
 echo   APK: %CD%\SabiCash.apk
 echo.
-echo   Instalar en movil:
-echo   1. Envia SabiCash.apk por WhatsApp o USB
-echo   2. Ajustes > Privacidad > Instalar apps desconocidas
-echo   3. Abre el APK e instala
+echo  Que quieres hacer ahora?
+echo.
+echo  [1] Probar con Expo Go (abre QR para escanear con el movil)
+echo  [2] Enviar APK por WhatsApp
+echo  [3] Abrir carpeta con el APK
+echo  [4] Salir
+echo.
+set /p OPCION=" Elige (1/2/3/4): "
+
+if "%OPCION%"=="1" (
+    echo  Iniciando Expo Go...
+    start cmd /k "cd /d %CD% && npx expo start"
+)
+if "%OPCION%"=="2" (
+    explorer /select,"%CD%\SabiCash.apk"
+    start https://web.whatsapp.com
+    echo  Carpeta abierta y WhatsApp Web listo. Adjunta el APK.
+)
+if "%OPCION%"=="3" (
+    explorer /select,"%CD%\SabiCash.apk"
+)
+
 echo.
 pause
