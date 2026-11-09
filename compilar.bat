@@ -97,6 +97,16 @@ if errorlevel 1 (
     echo  AVISO: Push fallido. Ejecuta manualmente: git.exe push origin main
 )
 
+:: ── Publicar APK como GitHub Release (lo que descarga la auto-actualizacion) ──
+echo.
+echo  [5b/6] Publicando APK en el Release v%VER%...
+gh release create v%VER% "SabiCash.apk" --repo Patrimonio360/Sabicash -t "v%VER% - %NOTES%" -n "%NOTES%"
+if errorlevel 1 (
+    echo  El release ya existia o fallo; intento subir/reemplazar el APK...
+    gh release upload v%VER% "SabiCash.apk" --repo Patrimonio360/Sabicash --clobber
+    if errorlevel 1 echo  AVISO: no se pudo publicar el APK. Hazlo manual: gh release create v%VER% SabiCash.apk
+)
+
 :: ── [6/6] Menu final ──
 echo.
 echo  ==========================================
