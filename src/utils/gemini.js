@@ -1,8 +1,11 @@
+
 import { GROQ_API_KEY, GROQ_URL, GROQ_MODEL } from '../config';
 import { COURSES, SUBJECTS, SECOND_LANGUAGE_OPTIONS } from '../data/questions';
 
+// Mezcla un array aleatoriamente
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
 
+// Valida que las opciones son texto real (no letras sueltas ni placeholders)
 function isValidOpts(opts) {
   if (!Array.isArray(opts) || opts.length !== 4) return false;
   const generic = /^(opci[oó]n\s*[abcd]|[abcd]\.?|opci[oó]n\s*\d)$/i;
@@ -41,6 +44,8 @@ export async function generateQuestion(courseId, subjectKey, usedQuestions = [],
     : '';
   const diffBlock = difficultyBlock(difficulty, course.label);
 
+  // ── NUEVO FORMATO: correct + wrong[] en vez de opts[] + a ──
+  // Así es IMPOSIBLE que el índice sea incorrecto — lo calculamos nosotros
   const promptTest = `Eres un profesor experto del sistema educativo español.
 Genera 1 pregunta tipo test sobre ${subjectLabel} para ${course.label} (${course.age}) según el currículo LOMLOE.${diffBlock}${avoidBlock}
 
@@ -93,8 +98,11 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
       return null;
     }
 
+    // ── Preguntas tipo TEST ──
     if (parsed.type === 'test') {
       const { q, correct, wrong, exp } = parsed;
+
+      // Validaciones básicas
       if (
         typeof q !== 'string' || q.length < 5 ||
         typeof correct !== 'string' || correct.trim().length < 2 ||
@@ -102,13 +110,17 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra:
         typeof exp !== 'string' || exp.length < 5
       ) return null;
 
+      // Construir opts mezclando correct + wrong — a se calcula aquí, nunca por Groq
       const shuffled = shuffle([correct, ...wrong]);
       const a = shuffled.indexOf(correct);
+
+      // Validar que las opciones son texto real
       if (!isValidOpts(shuffled)) return null;
 
       return { type: 'test', q, opts: shuffled, a, exp };
     }
 
+    // ── Preguntas de DESARROLLO ──
     if (parsed.type === 'dev') {
       const { q, answer, exp } = parsed;
       if (

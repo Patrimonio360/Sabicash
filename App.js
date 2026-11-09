@@ -17,6 +17,7 @@ import ParentScreen from './src/screens/ParentScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+// ── Versión leída automáticamente desde app.json — nunca más desincronizada ──
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.4';
 const VERSION_URL = 'https://raw.githubusercontent.com/Patrimonio360/Sabicash/main/version.json';
 
